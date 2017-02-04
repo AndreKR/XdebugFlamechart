@@ -1,0 +1,83 @@
+<html>
+	<body>
+		<script type="text/javascript" src="jszip.min.js"></script>
+		<script type="text/javascript" src="converter.inc.js"></script>
+		<script type="text/javascript" src="node_modules/d3/d3.min.js"></script>
+		<script type="text/javascript" src="node_modules/d3-tip/index.js"></script>
+		<script type="text/javascript" src="node_modules/d3-flame-graph/src/d3.flameGraph.js"></script>
+		<link rel="stylesheet" type="text/css" href="node_modules/d3-flame-graph/src/d3.flameGraph.css">
+
+		<span class="instructions" data-bind="instructions">Drop Xdebug profile here</span>
+		<progress value="0" max="100" style="display: none;" data-bind="progressbar"></progress>
+		<div id="chart" style="position: absolute; left: 150px;"></div>
+
+		<script type="text/javascript">
+			"use strict";
+
+			// To get a drop event we have to cancel dragover:
+			document.addEventListener('dragover', function (e) { e.preventDefault(); }, false);
+
+			document.addEventListener('drop', function (e) {
+
+				e.preventDefault();
+
+				document.querySelector('[data-bind=instructions]').innerHTML = 'Working...';
+				document.querySelector('[data-bind=progressbar]').value = 0;
+				document.querySelector('[data-bind=progressbar]').style.display = '';
+
+
+				var reader = new FileReader();
+				reader.onload = function (e)
+				{
+					var filename;
+
+					var input = new Uint8Array(e.target.result);
+
+					converter.convert(input, function(output) {
+
+						document.querySelector('[data-bind=progressbar]').style.display = 'none';
+						document.querySelector('[data-bind=instructions]').style.display = 'none';
+
+						var flameGraph = d3.flameGraph()
+							.cellHeight(18)
+							.transitionDuration(750)
+							.transitionEase('cubic-in-out')
+							.sort(false)
+							.title("");
+
+						var tip = d3.tip()
+							.direction("s")
+							.offset([8, 0])
+							.attr('class', 'd3-flame-graph-tip')
+							.html(function(d) { return d.tooltip; });
+
+						flameGraph.tooltip(tip);
+
+						// Example on how to use custom labels
+//						 var label = function(d) {
+//						  return "name: " + d.name + ", value: " + d.value;
+//						 }
+//
+//						 flameGraph.label(label);
+
+						function draw()
+						{
+							flameGraph.width(window.innerWidth - 300);
+							flameGraph.height(window.innerHeight - 80);
+							d3.select('#chart').selectAll('*').remove();
+							d3.select('#chart').datum(output).call(flameGraph);
+						}
+						draw();
+						window.addEventListener('resize', draw);
+
+					}, function (progress) {
+						document.querySelector('[data-bind=progressbar]').value = progress;
+					});
+				};
+				reader.readAsArrayBuffer(e.dataTransfer.files[0]);
+
+			}, false);
+
+		</script>
+	</body>
+</html>
