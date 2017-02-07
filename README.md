@@ -16,7 +16,9 @@ http://andrekr.github.io/XdebugFlamechart/
 
 ## Limitations
 
+* Right now it doesn't read trace files yet. Theres a branch where I started working on that.
 * Xdebug does not give information about *when*, within one function, another function is called. The Flamechart just shows all called functions on the left of each calling function
+* There is currently no Node.js version because I don't have a profile file handy that is so large that it would require a standalone converter.
 
 ## Source
 
