@@ -16,14 +16,16 @@ if (typeof window === 'undefined')
 
 	exports.convert = function(buffer, finish_callback, progress_callback, depth_limit) {
 
+		var LF = 10;
+
+		var file_type;
+
 		// Keeping the large data in one place, so it's easier to make sure nothing is leaked
 		var data;
 		var stack;
 
 		var process_file = function()
 		{
-			var LF = 10;
-
 			// If the chunk size is too small, performance suffers. Having one chunk per line (to eliminate the .split())
 			// yields unbearable performance. It seems that the ArrayBuffer operations are not as optimized as the String
 			// operations yet.
@@ -72,37 +74,54 @@ if (typeof window === 'undefined')
 				cleaned_chunk_string = chunk_string.split('\r').join(''); // http://jsperf.com/replace-all-vs-split-join
 				lines = cleaned_chunk_string.split('\n');
 
-				lines.forEach(function (line) {
+				if (file_type == 'profile')
+				{
+					lines.forEach(function (line) {
 
-					if (reading)
-					{
-						if (line != '' && !skip_summary)
+						if (reading)
 						{
-							current_block.push(line);
-							if (line == 'fn={main}')
-								skip_summary = 3;
+							if (line != '' && !skip_summary)
+							{
+								current_block.push(line);
+								if (line == 'fn={main}')
+									skip_summary = 3;
+							}
+							else
+							{
+								if (skip_summary)
+									skip_summary--;
+								else
+								{
+									if (!skip_first_block)
+										process_profile_block(current_block);
+									skip_first_block = false;
+
+									current_block = [];
+								}
+							}
 						}
 						else
 						{
-							if (skip_summary)
-								skip_summary--;
-							else
-							{
-								if (!skip_first_block)
-									process_block(current_block);
-								skip_first_block = false;
-
-								current_block = [];
-							}
+							if (line.substr(0, 7) == 'events:')
+								reading = true;
 						}
-					}
-					else
-					{
-						if (line.substr(0, 7) == 'events:')
-							reading = true;
-					}
 
-				});
+					});
+				}
+				if (file_type == 'trace')
+				{
+					lines.forEach(function (line) {
+						if (reading)
+						{
+							process_trace_line(line);
+						}
+						else
+						{
+							if (line.substr(0, 11) == 'TRACE START')
+								reading = true;
+						}
+					});
+				}
 
 				if (chunk_no % 100 == 0 && data.length > offset - deleted)
 				{
@@ -121,12 +140,22 @@ if (typeof window === 'undefined')
 					cleaned_chunk_string = undefined;
 					lines = undefined;
 					data = undefined;
-					process_stack();
+					process_profile_stack();
 				}
 			})();
 		};
 
-		var process_block  = function(v)
+		var process_trace_line = function (line) {
+			var parts = line.split('\t');
+			var is_return = !!parts[2];
+			var time_index = parts[3];
+			var function_name = parts[5] + parts[7];
+			var called_from = parts[8] + ':' + parts[9];
+
+
+		};
+
+		var process_profile_block  = function(v)
 		{
 			var entry;
 			var child;
@@ -164,7 +193,7 @@ if (typeof window === 'undefined')
 			}
 		};
 
-		var process_stack = function() {
+		var process_profile_stack = function() {
 			var output;
 			var root_us;
 
@@ -222,6 +251,8 @@ if (typeof window === 'undefined')
 		};
 
 		var filename;
+		var i;
+		var idx = 0;
 
 		data = new Uint8Array(buffer);
 
@@ -238,7 +269,25 @@ if (typeof window === 'undefined')
 			data = zip.file(filename).asUint8Array();
 		}
 
-		process_file();
+		// Find the beginning of the third line
+		idx = data.indexOf(LF, idx+1);
+		idx = data.indexOf(LF, idx+1);
+		var third_line = new TextDecoder('utf8').decode(data.slice(idx+1, data.indexOf(LF, idx+1)));
+
+		if (third_line.substr(0, 5) == 'TRACE')
+		{
+			file_type = 'trace';
+			process_file();
+		}
+		else if (third_line.substr(0, 4) == 'cmd:')
+		{
+			file_type = 'profile';
+			process_file();
+		}
+		else
+		{
+			alert('Unrecognized file type');
+		}
 	};
 
 
