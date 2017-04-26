@@ -163,20 +163,44 @@ if (typeof window === 'undefined')
 				if (v.length > 3) // this block describes a return
 				{
 					entry.children = [];
-					for (i = (v.length-3) / 4 ; i > 0 ; i--)
+
+					// In certain Xdebug versions the lines starting with "cfl=" are missing, in this case the sub-blocks are 3
+					// lines long and start with the "cfn=" line
+					if (v[3].substr(0, 4) == 'cfn=')
 					{
-						child = stack.pop();
+						for (i = (v.length-3) / 3 ; i > 0 ; i--)
+						{
+							child = stack.pop();
 
-						if (child.fl != get_name(v[3 + (i-1)*4], 4, fl_names) || child.fn != get_name(v[4 + (i-1)*4], 4, fn_names))
-							console.log('Mismatch!');
+							if (child.fn != get_name(v[3 + (i-1)*3], 4, fn_names))
+								console.log('Mismatch!');
 
-						child.cum_us = v[6 + (i-1)*4].split(' ')[1] / 1; // this used to be "/ 10" but apparently that is not necessary anymore
+							child.cum_us = v[5 + (i-1)*3].split(' ')[1] / 1; // this used to be "/ 10" but apparently that is not necessary anymore
 
-						child.called_from_file = entry.fl;
-						child.called_from_line = parseInt(v[6 + (i-1)*4].split(' ')[0]);
+							child.called_from_file = entry.fl;
+							child.called_from_line = parseInt(v[5 + (i-1)*3].split(' ')[0]);
 
-						entry.children.push(child);
+							entry.children.push(child);
+						}
 					}
+					else
+					{
+						for (i = (v.length-3) / 4 ; i > 0 ; i--)
+						{
+							child = stack.pop();
+
+							if (child.fl != get_name(v[3 + (i-1)*4], 4, fl_names) || child.fn != get_name(v[4 + (i-1)*4], 4, fn_names))
+								console.log('Mismatch!');
+
+							child.cum_us = v[6 + (i-1)*4].split(' ')[1] / 1; // this used to be "/ 10" but apparently that is not necessary anymore
+
+							child.called_from_file = entry.fl;
+							child.called_from_line = parseInt(v[6 + (i-1)*4].split(' ')[0]);
+
+							entry.children.push(child);
+						}
+					}
+
 					entry.children.reverse();
 				}
 
@@ -187,6 +211,7 @@ if (typeof window === 'undefined')
 		var process_stack = function() {
 			var output;
 			var root_us;
+			var strange_file;
 
 			var unmap_name = function(short_name, mapping)
 			{
@@ -220,11 +245,22 @@ if (typeof window === 'undefined')
 
 			root_us = 0;
 
+			// With certain Xdebug versions I have encountered files that were missing the {main} entry. If we ignore that
+			// fact the file is still somewhat parsable:
+			strange_file = true;
+			stack.forEach(function (v) {
+				if (unmap_name(v.fn, fn_names) == '{main}')
+					strange_file = false;
+			});
+
+			if (strange_file)
+				alert('Your file is missing the {main} entry. I\'ll try to parse it anyway, but treat results with suspicion.');
+
 			// The file provides no cumulated time for the top level, so we calculate them ourselves:
 			stack.forEach(function (v) {
 
 				var cum_us = 0;
-				v.children.forEach(function (v) {
+				if (v.children) v.children.forEach(function (v) {
 					cum_us += v.cum_us;
 				});
 
