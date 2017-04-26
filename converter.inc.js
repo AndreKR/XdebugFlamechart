@@ -19,6 +19,8 @@ if (typeof window === 'undefined')
 		// Keeping the large data in one place, so it's easier to make sure nothing is leaked
 		var data;
 		var stack;
+		var fl_names;
+		var fn_names;
 
 		var process_file = function()
 		{
@@ -51,6 +53,8 @@ if (typeof window === 'undefined')
 			current_block = [];
 
 			stack = [];
+			fl_names = {};
+			fn_names = {};
 			skip_first_block = true;
 
 			(function cont() {
@@ -79,7 +83,7 @@ if (typeof window === 'undefined')
 						if (line != '' && !skip_summary)
 						{
 							current_block.push(line);
-							if (line == 'fn={main}')
+							if (line.substr(-6) == '{main}')
 								skip_summary = 3;
 						}
 						else
@@ -132,11 +136,27 @@ if (typeof window === 'undefined')
 			var child;
 			var i;
 
+			var get_name = function(s, prefix_length, mapping) {
+
+				s = s.substr(prefix_length);
+
+				var closing_parens_pos = s.indexOf(')');
+				if (s.substr(0, 1) == '(' && closing_parens_pos != -1)
+				{
+					var long_name = s.substr(closing_parens_pos + 2);
+					if (long_name != '')
+						mapping[s.substr(1, closing_parens_pos - 1)] = long_name
+					return s.substr(0, closing_parens_pos + 1)
+				}
+				else
+					return s
+			};
+
 			if (v.length)
 			{
 				entry = {};
-				entry.fl = v[0].substr(3);
-				entry.fn = v[1].substr(3);
+				entry.fl = get_name(v[0], 3, fl_names);
+				entry.fn = get_name(v[1], 3, fn_names);
 
 				entry.self_us = v[2].split(' ')[1] / 1; // this used to be "/ 10" but apparently that is not necessary anymore
 
@@ -147,7 +167,7 @@ if (typeof window === 'undefined')
 					{
 						child = stack.pop();
 
-						if (child.fl != v[3 + (i-1)*4].substr(4) || child.fn != v[4 + (i-1)*4].substr(4))
+						if (child.fl != get_name(v[3 + (i-1)*4], 4, fl_names) || child.fn != get_name(v[4 + (i-1)*4], 4, fn_names))
 							console.log('Mismatch!');
 
 						child.cum_us = v[6 + (i-1)*4].split(' ')[1] / 1; // this used to be "/ 10" but apparently that is not necessary anymore
@@ -168,14 +188,22 @@ if (typeof window === 'undefined')
 			var output;
 			var root_us;
 
+			var unmap_name = function(short_name, mapping)
+			{
+				if (short_name != null && short_name.substr(0, 1) == '(' && short_name.substr(-1) == ')' && mapping[short_name.substr(1, short_name.length-2)] != null)
+					return mapping[short_name.substr(1, short_name.length-2)];
+				else
+					return short_name;
+			};
+
 			var write = function (node)
 			{
 				var output;
 
 				output = {
-					name: node.fn,
+					name: unmap_name(node.fn, fn_names),
 					value: node.cum_us,
-					tooltip: node.fn + '<br>' + (Math.round(node.cum_us) / 1000) + ' ms<br>Called from: ' + node.called_from_file + ':' + node.called_from_line + '<br>' + 'Defined in: ' + node.fl
+					tooltip: unmap_name(node.fn, fn_names) + '<br>' + (Math.round(node.cum_us) / 1000) + ' ms<br>Called from: ' + unmap_name(node.called_from_file, fl_names) + ':' + node.called_from_line + '<br>' + 'Defined in: ' + unmap_name(node.fl, fl_names)
 				};
 
 				if (node.children)
